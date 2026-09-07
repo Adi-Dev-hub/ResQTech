@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>CloudburstForm</class>
+ <widget class="QWidget" name="CloudburstForm">
+  <property name="geometry"><rect><x>0</x><y>0</y><width>380</width><height>650</height></rect></property>
+  <layout class="QVBoxLayout" name="mainLayout">
+   <property name="spacing"><number>8</number></property>
+   <property name="leftMargin"><number>10</number></property>
+   <property name="topMargin"><number>10</number></property>
+   <property name="rightMargin"><number>10</number></property>
+   <property name="bottomMargin"><number>10</number></property>
+   <item><widget class="QLabel" name="lblTitle"><property name="text"><string>CLOUDBURST ANALYSIS FORM</string></property><property name="styleSheet"><string>font-size: 12px; font-weight: bold; color: #0F172A;</string></property></widget></item>
+   <item>
+    <widget class="QGroupBox" name="grpData">
+     <property name="title"><string>Data Selection</string></property>
+     <layout class="QFormLayout">
+      <item row="0" column="0"><widget class="QLabel"><property name="text"><string>Image / Data Type:</string></property></widget></item>
+      <item row="0" column="1">
+       <widget class="QComboBox" name="cmbDataType">
+        <item><property name="text"><string>Raster</string></property></item>
+        <item><property name="text"><string>DEM</string></property></item>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="grpInputs">
+     <property name="title"><string>Input Datasets</string></property>
+     <layout class="QFormLayout">
+      <item row="0" column="0"><widget class="QLabel"><property name="text"><string>Rainfall Intensity:</string></property></widget></item>
+      <item row="0" column="1">
+       <layout class="QHBoxLayout">
+        <item><widget class="QLineEdit" name="txtRain"><property name="placeholderText"><string>Select layer file...</string></property></widget></item>
+        <item><widget class="QPushButton" name="btnBrowseRain"><property name="text"><string>Browse</string></property></widget></item>
+       </layout>
+      </item>
+      <item row="1" column="0"><widget class="QLabel"><property name="text"><string>DEM Layer:</string></property></widget></item>
+      <item row="1" column="1">
+       <layout class="QHBoxLayout">
+        <item><widget class="QLineEdit" name="txtDEM"><property name="placeholderText"><string>Select layer file...</string></property></widget></item>
+        <item><widget class="QPushButton" name="btnBrowseDEM"><property name="text"><string>Browse</string></property></widget></item>
+       </layout>
+      </item>
+      <item row="2" column="0"><widget class="QLabel"><property name="text"><string>Slope Layer:</string></property></widget></item>
+      <item row="2" column="1">
+       <layout class="QHBoxLayout">
+        <item><widget class="QLineEdit" name="txtSlope"><property name="placeholderText"><string>Select layer file...</string></property></widget></item>
+        <item><widget class="QPushButton" name="btnBrowseSlope"><property name="text"><string>Browse</string></property></widget></item>
+       </layout>
+      </item>
+      <item row="3" column="0"><widget class="QLabel"><property name="text"><string>Drainage Network:</string></property></widget></item>
+      <item row="3" column="1">
+       <layout class="QHBoxLayout">
+        <item><widget class="QLineEdit" name="txtDrainage"><property name="placeholderText"><string>Select layer file...</string></property></widget></item>
+        <item><widget class="QPushButton" name="btnBrowseDrainage"><property name="text"><string>Browse</string></property></widget></item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="grpParams">
+     <property name="title"><string>Analysis Parameters</string></property>
+     <layout class="QFormLayout">
+      <item row="0" column="0"><widget class="QLabel"><property name="text"><string>Rainfall Intensity (mm/hr):</string></property></widget></item>
+      <item row="0" column="1"><widget class="QDoubleSpinBox" name="spnRainRate"><property name="maximum"><double>500</double></property></widget></item>
+      <item row="1" column="0"><widget class="QLabel"><property name="text"><string>Slope Gradient (deg):</string></property></widget></item>
+      <item row="1" column="1"><widget class="QDoubleSpinBox" name="spnSlope"><property name="maximum"><double>90</double></property></widget></item>
+      <item row="2" column="0"><widget class="QLabel"><property name="text"><string>Elevation Threshold (m):</string></property></widget></item>
+      <item row="2" column="1"><widget class="QDoubleSpinBox" name="spnElev"><property name="maximum"><double>8848</double></property></widget></item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="btnLayout">
+     <item><widget class="QPushButton" name="btnRun"><property name="text"><string>Run Cloudburst Analysis</string></property></widget></item>
+     <item><widget class="QPushButton" name="btnReset"><property name="text"><string>Reset Parameters</string></property></widget></item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+</ui>

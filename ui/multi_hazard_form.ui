@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MultiHazardForm</class>
+ <widget class="QWidget" name="MultiHazardForm">
+  <property name="geometry"><rect><x>0</x><y>0</y><width>380</width><height>650</height></rect></property>
+  <layout class="QVBoxLayout" name="mainLayout">
+   <property name="spacing"><number>8</number></property>
+   <property name="leftMargin"><number>10</number></property>
+   <property name="topMargin"><number>10</number></property>
+   <property name="rightMargin"><number>10</number></property>
+   <property name="bottomMargin"><number>10</number></property>
+   <item><widget class="QLabel" name="lblTitle"><property name="text"><string>MULTI-HAZARD ANALYSIS FORM</string></property><property name="styleSheet"><string>font-size: 12px; font-weight: bold; color: #0F172A;</string></property></widget></item>
+   <item>
+    <widget class="QGroupBox" name="grpLayers">
+     <property name="title"><string>Active Hazard Layers</string></property>
+     <layout class="QVBoxLayout" name="vboxLayers">
+      <item><widget class="QCheckBox" name="chkFlood"><property name="text"><string>Flood Hazard Layer</string></property><property name="checked"><bool>true</bool></property></widget></item>
+      <item><widget class="QCheckBox" name="chkLandslide"><property name="text"><string>Landslide Susceptibility Matrix</string></property><property name="checked"><bool>true</bool></property></widget></item>
+      <item><widget class="QCheckBox" name="chkCyclone"><property name="text"><string>Cyclone / Storm Surge Zone</string></property></widget></item>
+      <item><widget class="QCheckBox" name="chkTsunami"><property name="text"><string>Coastal Tsunami Vector</string></property></widget></item>
+      <item><widget class="QCheckBox" name="chkCloudburst"><property name="text"><string>Cloudburst Susceptibility</string></property></widget></item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="grpInputs">
+     <property name="title"><string>Input Composite Layers</string></property>
+     <layout class="QFormLayout">
+      <item row="0" column="0"><widget class="QLabel"><property name="text"><string>Hazard Stack Layer:</string></property></widget></item>
+      <item row="0" column="1">
+       <layout class="QHBoxLayout">
+        <item><widget class="QLineEdit" name="txtStack"><property name="placeholderText"><string>Select layer file...</string></property></widget></item>
+        <item><widget class="QPushButton" name="btnBrowseStack"><property name="text"><string>Browse</string></property></widget></item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="btnLayout">
+     <item><widget class="QPushButton" name="btnRun"><property name="text"><string>Run Composite Analysis</string></property></widget></item>
+     <item><widget class="QPushButton" name="btnReset"><property name="text"><string>Reset Parameters</string></property></widget></item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+</ui>
