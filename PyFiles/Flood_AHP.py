@@ -1,7 +1,8 @@
 import sys
 import numpy as np
 import rasterio
-from scipy.ndimage import zoom
+
+from rasterio.warp import reproject, Resampling
 
 
 # ============================================================
@@ -9,11 +10,11 @@ from scipy.ndimage import zoom
 # Continuous Flood Risk Index: 0-100%
 #
 # Factors:
-# 1. DEM
-# 2. Slope
-# 3. LULC
-# 4. Rainfall
-# 5. Population Density
+#   1. DEM
+#   2. Slope
+#   3. LULC
+#   4. Rainfall
+#   5. Population Density
 # ============================================================
 
 
@@ -31,41 +32,96 @@ WEIGHTS = {
 
 
 # ============================================================
-# READ RASTER
+# CHECK WEIGHTS
 # ============================================================
 
-def read_raster(path):
+if not np.isclose(sum(WEIGHTS.values()), 1.0):
+    raise ValueError(
+        f"AHP weights must sum to 1. Current sum = "
+        f"{sum(WEIGHTS.values())}"
+    )
+
+
+# ============================================================
+# READ REFERENCE DEM
+# ============================================================
+
+def read_reference_raster(path):
 
     with rasterio.open(path) as src:
 
-        data = src.read(1).astype(float)
+        data = src.read(1).astype(np.float32)
+
         profile = src.profile.copy()
+
+        transform = src.transform
+        crs = src.crs
+
+        width = src.width
+        height = src.height
+
         nodata = src.nodata
 
     # Convert NoData to NaN
     if nodata is not None:
         data[data == nodata] = np.nan
 
-    return data, profile
+    # Remove invalid values
+    data[~np.isfinite(data)] = np.nan
 
-
-# ============================================================
-# RESAMPLE TO DEM GRID
-# ============================================================
-
-def resample_to_reference(data, reference_shape):
-
-    if data.shape == reference_shape:
-        return data
-
-    zoom_y = reference_shape[0] / data.shape[0]
-    zoom_x = reference_shape[1] / data.shape[1]
-
-    return zoom(
+    return (
         data,
-        (zoom_y, zoom_x),
-        order=1
+        profile,
+        transform,
+        crs,
+        width,
+        height
     )
+
+
+# ============================================================
+# READ AND REPROJECT/ALIGN RASTER
+# ============================================================
+
+def read_and_align(
+    path,
+    reference_transform,
+    reference_crs,
+    reference_width,
+    reference_height,
+    resampling_method
+):
+
+    with rasterio.open(path) as src:
+
+        source = src.read(1).astype(np.float32)
+
+        source_nodata = src.nodata
+
+        destination = np.full(
+            (reference_height, reference_width),
+            np.nan,
+            dtype=np.float32
+        )
+
+        reproject(
+            source=source,
+            destination=destination,
+
+            src_transform=src.transform,
+            src_crs=src.crs,
+            src_nodata=source_nodata,
+
+            dst_transform=reference_transform,
+            dst_crs=reference_crs,
+            dst_nodata=np.nan,
+
+            resampling=resampling_method
+        )
+
+    destination[~np.isfinite(destination)] = np.nan
+
+    return destination
 
 
 # ============================================================
@@ -73,33 +129,39 @@ def resample_to_reference(data, reference_shape):
 #
 # Higher value = higher flood risk
 #
-# Used for:
 # Rainfall
 # Population Density
 # ============================================================
 
-def normalize(data):
+def normalize(data, valid_mask):
 
-    result = np.full(data.shape, np.nan)
+    result = np.full(
+        data.shape,
+        np.nan,
+        dtype=np.float32
+    )
 
-    valid = np.isfinite(data)
+    valid = (
+        np.isfinite(data) &
+        valid_mask
+    )
 
     if not np.any(valid):
         return result
 
-    minimum = np.nanmin(data)
-    maximum = np.nanmax(data)
+    minimum = np.nanmin(data[valid])
+    maximum = np.nanmax(data[valid])
 
     if maximum == minimum:
 
         result[valid] = 0.5
 
-        return result
+    else:
 
-    result[valid] = (
-        (data[valid] - minimum) /
-        (maximum - minimum)
-    )
+        result[valid] = (
+            (data[valid] - minimum) /
+            (maximum - minimum)
+        )
 
     return result
 
@@ -109,143 +171,402 @@ def normalize(data):
 #
 # Lower value = higher flood risk
 #
-# Used for:
 # DEM
 # Slope
 # ============================================================
 
-def inverse_normalize(data):
+def inverse_normalize(data, valid_mask):
 
-    result = np.full(data.shape, np.nan)
+    result = np.full(
+        data.shape,
+        np.nan,
+        dtype=np.float32
+    )
 
-    valid = np.isfinite(data)
+    valid = (
+        np.isfinite(data) &
+        valid_mask
+    )
 
     if not np.any(valid):
         return result
 
-    minimum = np.nanmin(data)
-    maximum = np.nanmax(data)
+    minimum = np.nanmin(data[valid])
+    maximum = np.nanmax(data[valid])
 
     if maximum == minimum:
 
         result[valid] = 0.5
 
-        return result
+    else:
 
-    result[valid] = (
-        (maximum - data[valid]) /
-        (maximum - minimum)
-    )
+        result[valid] = (
+            (maximum - data[valid]) /
+            (maximum - minimum)
+        )
 
     return result
 
 
 # ============================================================
+# SHOW ACTUAL LULC CLASSES
+# ============================================================
+
+def get_lulc_classes(lulc):
+
+    valid = np.isfinite(lulc)
+
+    if not np.any(valid):
+        return []
+
+    values = np.unique(lulc[valid])
+
+    return values
+
+
+# ============================================================
 # LULC RISK RECLASSIFICATION
 #
-# IMPORTANT:
-# These class codes MUST match your LULC raster.
+# YOUR LULC RASTER:
 #
-# Example:
-# 1 = Water
-# 2 = Forest
-# 3 = Cropland
-# 4 = Built-up
-# 5 = Barren
+# 20
+# 30
+# 40
+# 50
+# 60
+# 80
+# 90
+# 112
+# 114
+# 116
+# 122
+# 124
+# 126
+#
+# 255 = NoData
+#
+# IMPORTANT:
+# The meanings of these classes must match the legend
+# of the LULC dataset.
+#
+# DO NOT invent class meanings.
 # ============================================================
 
 def classify_lulc(lulc):
 
-    risk = np.full(lulc.shape, np.nan)
+    risk = np.full(
+        lulc.shape,
+        np.nan,
+        dtype=np.float32
+    )
 
-    # Water
-    risk[lulc == 1] = 1.00
+    # --------------------------------------------------------
+    # PUT YOUR ACTUAL LULC -> FLOOD RISK VALUES HERE
+    #
+    # Format:
+    #
+    # risk[lulc == CLASS_CODE] = RISK_VALUE
+    #
+    # Risk value must be between 0 and 1.
+    #
+    # Example:
+    #
+    # risk[lulc == 20] = 0.80
+    #
+    # --------------------------------------------------------
 
-    # Forest
-    risk[lulc == 2] = 0.20
+    # ========================================================
+    # TEMPORARY MAPPING
+    #
+    # These values are ONLY based on the assumption that
+    # lower/higher classes correspond to different land
+    # cover types.
+    #
+    # YOU SHOULD REPLACE THESE WITH THE ACTUAL LEGEND VALUES.
+    # ========================================================
 
-    # Cropland
-    risk[lulc == 3] = 0.60
+    LULC_RISK = {
 
-    # Built-up
-    risk[lulc == 4] = 0.90
+        20: 0.20,
+        30: 0.30,
+        40: 0.40,
+        50: 0.90,
+        60: 0.70,
+        80: 1.00,
+        90: 0.80,
 
-    # Barren
-    risk[lulc == 5] = 0.70
+        112: 0.20,
+        114: 0.30,
+        116: 0.40,
+
+        122: 0.60,
+        124: 0.70,
+        126: 0.90
+    }
+
+    # Apply mapping
+    for class_code, risk_value in LULC_RISK.items():
+
+        risk[lulc == class_code] = risk_value
 
     return risk
 
 
 # ============================================================
-# AHP FLOOD RISK CALCULATION
+# CHECK LULC RECLASSIFICATION
+# ============================================================
+
+def check_lulc_classification(lulc, lulc_score):
+
+    actual_classes = get_lulc_classes(lulc)
+
+    print("\nLULC classes found:")
+
+    for value in actual_classes:
+
+        count = np.count_nonzero(
+            lulc == value
+        )
+
+        mapped = np.isfinite(
+            lulc_score[lulc == value]
+        )
+
+        mapped_count = np.count_nonzero(mapped)
+
+        print(
+            f"  Class {value:g} : "
+            f"{count} pixels | "
+            f"Mapped: {mapped_count}"
+        )
+
+    unmapped = (
+        np.isfinite(lulc) &
+        ~np.isfinite(lulc_score)
+    )
+
+    if np.any(unmapped):
+
+        print(
+            "\nWARNING:"
+        )
+
+        print(
+            "Some LULC classes have no flood-risk "
+            "mapping."
+        )
+
+        print(
+            "Unmapped classes:"
+        )
+
+        values = np.unique(
+            lulc[unmapped]
+        )
+
+        for value in values:
+
+            print(
+                f"  {value:g}"
+            )
+
+        return False
+
+    return True
+
+
+# ============================================================
+# CALCULATE FLOOD RISK
 # ============================================================
 
 def calculate_flood_risk(
+    dem,
+    slope,
+    lulc,
+    rainfall,
+    population
+):
+
+    print(
+        "\nCalculating common valid area..."
+    )
+
+    # --------------------------------------------------------
+    # First make sure all five input layers are valid
+    # --------------------------------------------------------
+
+    common_valid = (
+        np.isfinite(dem) &
+        np.isfinite(slope) &
+        np.isfinite(lulc) &
+        np.isfinite(rainfall) &
+        np.isfinite(population)
+    )
+
+    print(
+        "Valid pixels available for AHP:",
+        np.count_nonzero(common_valid)
+    )
+
+    if not np.any(common_valid):
+
+        raise ValueError(
+            "No common valid pixels exist between "
+            "the input rasters."
+        )
+
+    # --------------------------------------------------------
+    # NORMALIZE DEM
+    # --------------------------------------------------------
+
+    print("\nNormalizing DEM...")
+
+    dem_score = inverse_normalize(
         dem,
+        common_valid
+    )
+
+    # --------------------------------------------------------
+    # NORMALIZE SLOPE
+    # --------------------------------------------------------
+
+    print("Normalizing Slope...")
+
+    slope_score = inverse_normalize(
         slope,
+        common_valid
+    )
+
+    # --------------------------------------------------------
+    # LULC
+    # --------------------------------------------------------
+
+    print("Reclassifying LULC...")
+
+    lulc_score = classify_lulc(
+        lulc
+    )
+
+    # Check LULC
+    lulc_ok = check_lulc_classification(
         lulc,
+        lulc_score
+    )
+
+    if not lulc_ok:
+
+        raise ValueError(
+            "\nLULC classification is incomplete. "
+            "The program stopped to prevent an incorrect "
+            "flood-risk map."
+        )
+
+    # --------------------------------------------------------
+    # NORMALIZE RAINFALL
+    # --------------------------------------------------------
+
+    print("Normalizing Rainfall...")
+
+    rainfall_score = normalize(
         rainfall,
-        population):
-
-    print("Calculating normalized risk layers...")
+        common_valid
+    )
 
     # --------------------------------------------------------
-    # Normalize each factor
+    # NORMALIZE POPULATION
     # --------------------------------------------------------
 
-    dem_score = inverse_normalize(dem)
+    print(
+        "Normalizing Population Density..."
+    )
 
-    slope_score = inverse_normalize(slope)
+    population_score = normalize(
+        population,
+        common_valid
+    )
 
-    lulc_score = classify_lulc(lulc)
+    # --------------------------------------------------------
+    # FINAL VALID PIXELS
+    # --------------------------------------------------------
 
-    rainfall_score = normalize(rainfall)
+    final_valid = (
 
-    population_score = normalize(population)
+        common_valid &
 
+        np.isfinite(dem_score) &
+
+        np.isfinite(slope_score) &
+
+        np.isfinite(lulc_score) &
+
+        np.isfinite(rainfall_score) &
+
+        np.isfinite(population_score)
+    )
+
+    print(
+        "\nFinal valid pixels for AHP:",
+        np.count_nonzero(final_valid)
+    )
+
+    if not np.any(final_valid):
+
+        raise ValueError(
+            "No valid pixels remain after "
+            "normalization and LULC classification."
+        )
 
     # --------------------------------------------------------
     # AHP WEIGHTED OVERLAY
     # --------------------------------------------------------
 
-    flood_risk = (
+    print(
+        "\nRunning AHP weighted overlay..."
+    )
+
+    flood_risk = np.full(
+        dem.shape,
+        np.nan,
+        dtype=np.float32
+    )
+
+    flood_risk[final_valid] = (
 
         WEIGHTS["dem"] *
-        dem_score
+        dem_score[final_valid]
 
         +
 
         WEIGHTS["slope"] *
-        slope_score
+        slope_score[final_valid]
 
         +
 
         WEIGHTS["lulc"] *
-        lulc_score
+        lulc_score[final_valid]
 
         +
 
         WEIGHTS["rainfall"] *
-        rainfall_score
+        rainfall_score[final_valid]
 
         +
 
         WEIGHTS["population"] *
-        population_score
-
+        population_score[final_valid]
     )
 
     return flood_risk
 
 
 # ============================================================
-# MAIN PROGRAM
+# MAIN
 # ============================================================
 
 def main():
 
     # --------------------------------------------------------
-    # CHECK INPUT ARGUMENTS
+    # CHECK COMMAND-LINE ARGUMENTS
     # --------------------------------------------------------
 
     if len(sys.argv) != 7:
@@ -263,106 +584,172 @@ def main():
 
         sys.exit(1)
 
-
     # --------------------------------------------------------
     # FILE PATHS
     # --------------------------------------------------------
 
     dem_file = sys.argv[1]
-
     slope_file = sys.argv[2]
-
     lulc_file = sys.argv[3]
-
     rainfall_file = sys.argv[4]
-
     population_file = sys.argv[5]
-
     output_file = sys.argv[6]
 
-
     # --------------------------------------------------------
-    # READ INPUT RASTERS
+    # READ DEM
     # --------------------------------------------------------
 
     print("\nReading DEM...")
 
-    dem, profile = read_raster(
+    (
+        dem,
+        profile,
+        reference_transform,
+        reference_crs,
+        reference_width,
+        reference_height
+    ) = read_reference_raster(
         dem_file
     )
 
-
-    print("Reading Slope...")
-
-    slope, _ = read_raster(
-        slope_file
+    print(
+        f"DEM size: "
+        f"{reference_width} x {reference_height}"
     )
 
-
-    print("Reading LULC...")
-
-    lulc, _ = read_raster(
-        lulc_file
+    print(
+        f"DEM CRS: {reference_crs}"
     )
-
-
-    print("Reading Rainfall...")
-
-    rainfall, _ = read_raster(
-        rainfall_file
-    )
-
-
-    print("Reading Population Density...")
-
-    population, _ = read_raster(
-        population_file
-    )
-
 
     # --------------------------------------------------------
-    # USE DEM AS REFERENCE GRID
+    # SLOPE
+    #
+    # Continuous raster:
+    # Bilinear resampling
     # --------------------------------------------------------
 
-    reference_shape = dem.shape
-
-
-    print("\nChecking raster dimensions...")
-
-
-    slope = resample_to_reference(
-        slope,
-        reference_shape
+    print(
+        "\nReading and aligning Slope..."
     )
 
-
-    lulc = resample_to_reference(
-        lulc,
-        reference_shape
+    slope = read_and_align(
+        slope_file,
+        reference_transform,
+        reference_crs,
+        reference_width,
+        reference_height,
+        Resampling.bilinear
     )
-
-
-    rainfall = resample_to_reference(
-        rainfall,
-        reference_shape
-    )
-
-
-    population = resample_to_reference(
-        population,
-        reference_shape
-    )
-
-
-    print("All rasters aligned to DEM.")
-
 
     # --------------------------------------------------------
-    # CALCULATE AHP FLOOD RISK
+    # LULC
+    #
+    # Categorical raster:
+    # Nearest neighbour
     # --------------------------------------------------------
 
-    print("\nRunning AHP weighted overlay...")
+    print(
+        "Reading and aligning LULC..."
+    )
 
+    lulc = read_and_align(
+        lulc_file,
+        reference_transform,
+        reference_crs,
+        reference_width,
+        reference_height,
+        Resampling.nearest
+    )
+
+    # --------------------------------------------------------
+    # RAINFALL
+    #
+    # Continuous raster:
+    # Bilinear
+    # --------------------------------------------------------
+
+    print(
+        "Reading and aligning Rainfall..."
+    )
+
+    rainfall = read_and_align(
+        rainfall_file,
+        reference_transform,
+        reference_crs,
+        reference_width,
+        reference_height,
+        Resampling.bilinear
+    )
+
+    # --------------------------------------------------------
+    # POPULATION
+    #
+    # Continuous raster:
+    # Bilinear
+    # --------------------------------------------------------
+
+    print(
+        "Reading and aligning Population Density..."
+    )
+
+    population = read_and_align(
+        population_file,
+        reference_transform,
+        reference_crs,
+        reference_width,
+        reference_height,
+        Resampling.bilinear
+    )
+
+    print(
+        "\nAll rasters aligned to DEM."
+    )
+
+    # --------------------------------------------------------
+    # INPUT STATISTICS
+    # --------------------------------------------------------
+
+    print("\nInput ranges:")
+
+    if np.any(np.isfinite(dem)):
+
+        print(
+            f"DEM       : "
+            f"{np.nanmin(dem):.3f} "
+            f"to "
+            f"{np.nanmax(dem):.3f}"
+        )
+
+    if np.any(np.isfinite(slope)):
+
+        print(
+            f"Slope     : "
+            f"{np.nanmin(slope):.3f} "
+            f"to "
+            f"{np.nanmax(slope):.3f}"
+        )
+
+    if np.any(np.isfinite(rainfall)):
+
+        print(
+            f"Rainfall  : "
+            f"{np.nanmin(rainfall):.3f} "
+            f"to "
+            f"{np.nanmax(rainfall):.3f}"
+        )
+
+    if np.any(np.isfinite(population)):
+
+        print(
+            f"Population: "
+            f"{np.nanmin(population):.3f} "
+            f"to "
+            f"{np.nanmax(population):.3f}"
+        )
+
+    # --------------------------------------------------------
+    # CALCULATE AHP
+    # --------------------------------------------------------
 
     flood_risk = calculate_flood_risk(
         dem,
@@ -372,30 +759,46 @@ def main():
         population
     )
 
-
-    # ========================================================
-    # CONVERT AHP SCORE TO PERCENTAGE
-    # ========================================================
+    # --------------------------------------------------------
+    # CONVERT 0-1 TO 0-100%
+    # --------------------------------------------------------
 
     flood_risk_percentage = (
-        flood_risk * 100
+        flood_risk * 100.0
     )
 
+    # Make absolutely sure the output is 0-100
+    valid = np.isfinite(
+        flood_risk_percentage
+    )
+
+    flood_risk_percentage[valid] = np.clip(
+        flood_risk_percentage[valid],
+        0.0,
+        100.0
+    )
 
     # --------------------------------------------------------
-    # SAVE FLOOD RISK PERCENTAGE RASTER
+    # OUTPUT PROFILE
     # --------------------------------------------------------
 
     output_profile = profile.copy()
 
-
     output_profile.update(
+        driver="GTiff",
         dtype="float32",
         count=1,
+        width=reference_width,
+        height=reference_height,
+        transform=reference_transform,
+        crs=reference_crs,
         nodata=-9999,
         compress="lzw"
     )
 
+    # --------------------------------------------------------
+    # CONVERT NaN TO NoData
+    # --------------------------------------------------------
 
     output_data = np.where(
         np.isfinite(flood_risk_percentage),
@@ -403,6 +806,13 @@ def main():
         -9999
     ).astype(np.float32)
 
+    # --------------------------------------------------------
+    # SAVE OUTPUT
+    # --------------------------------------------------------
+
+    print(
+        "\nSaving flood-risk raster..."
+    )
 
     with rasterio.open(
         output_file,
@@ -415,17 +825,54 @@ def main():
             1
         )
 
-
     # --------------------------------------------------------
     # STATISTICS
     # --------------------------------------------------------
 
-    valid = np.isfinite(
+    valid_output = np.isfinite(
         flood_risk_percentage
     )
 
+    print(
+        "\n========================================"
+    )
 
-    if np.any(valid):
+    print(
+        "AHP FLOOD RISK CALCULATION COMPLETE"
+    )
+
+    print(
+        "========================================"
+    )
+
+    print("\nAHP Weights:")
+
+    print(
+        f"DEM                : {WEIGHTS['dem']}"
+    )
+
+    print(
+        f"Slope              : {WEIGHTS['slope']}"
+    )
+
+    print(
+        f"LULC               : {WEIGHTS['lulc']}"
+    )
+
+    print(
+        f"Rainfall           : {WEIGHTS['rainfall']}"
+    )
+
+    print(
+        f"Population Density : {WEIGHTS['population']}"
+    )
+
+    print(
+        f"Total Weight       : "
+        f"{sum(WEIGHTS.values())}"
+    )
+
+    if np.any(valid_output):
 
         minimum = np.nanmin(
             flood_risk_percentage
@@ -439,81 +886,40 @@ def main():
             flood_risk_percentage
         )
 
+        print(
+            "\nFlood Risk Index (%):"
+        )
+
+        print(
+            f"Minimum Risk : {minimum:.2f}%"
+        )
+
+        print(
+            f"Maximum Risk : {maximum:.2f}%"
+        )
+
+        print(
+            f"Mean Risk    : {mean:.2f}%"
+        )
+
+        print(
+            f"Valid Pixels : "
+            f"{np.count_nonzero(valid_output)}"
+        )
+
     else:
 
-        minimum = np.nan
-
-        maximum = np.nan
-
-        mean = np.nan
-
-
-    # --------------------------------------------------------
-    # FINAL OUTPUT
-    # --------------------------------------------------------
-
-    print("\n========================================")
+        print(
+            "\nERROR: No valid output pixels."
+        )
 
     print(
-        "AHP FLOOD RISK CALCULATION COMPLETE"
-    )
-
-    print("========================================")
-
-
-    print("\nAHP Weights:")
-
-    print(
-        "DEM                 :",
-        WEIGHTS["dem"]
+        "\nOutput:"
     )
 
     print(
-        "Slope               :",
-        WEIGHTS["slope"]
+        output_file
     )
-
-    print(
-        "LULC                :",
-        WEIGHTS["lulc"]
-    )
-
-    print(
-        "Rainfall            :",
-        WEIGHTS["rainfall"]
-    )
-
-    print(
-        "Population Density  :",
-        WEIGHTS["population"]
-    )
-
-
-    print("\nFlood Risk Index (%):")
-
-    print(
-        "Minimum Risk        :",
-        minimum,
-        "%"
-    )
-
-    print(
-        "Maximum Risk        :",
-        maximum,
-        "%"
-    )
-
-    print(
-        "Mean Risk           :",
-        mean,
-        "%"
-    )
-
-
-    print("\nOutput:")
-
-    print(output_file)
-
 
     print(
         "\nThe output contains continuous "
@@ -531,5 +937,4 @@ def main():
 # ============================================================
 
 if __name__ == "__main__":
-
     main()
