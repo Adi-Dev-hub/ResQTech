@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>OSMLoaderForm</class>
+ <widget class="QWidget" name="OSMLoaderForm">
+  <property name="geometry"><rect><x>0</x><y>0</y><width>380</width><height>600</height></rect></property>
+  <layout class="QVBoxLayout" name="mainLayout">
+   <property name="spacing"><number>8</number></property>
+   <property name="leftMargin"><number>10</number></property>
+   <property name="topMargin"><number>10</number></property>
+   <property name="rightMargin"><number>10</number></property>
+   <property name="bottomMargin"><number>10</number></property>
+   <item>
+    <widget class="QLabel" name="lblTitle">
+     <property name="text"><string>OSM &amp; SHAPEFILE VECTOR LOADER</string></property>
+     <property name="styleSheet"><string>font-size: 11px; font-weight: bold; color: #0284C7;</string></property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="grpInputs">
+     <property name="title"><string>1. Select Vector Dataset</string></property>
+     <layout class="QFormLayout">
+      <item row="0" column="0"><widget class="QLabel"><property name="text"><string>Vector Layer (.shp/.pbf):</string></property></widget></item>
+      <item row="0" column="1">
+       <layout class="QHBoxLayout">
+        <item><widget class="QLineEdit" name="txtVectorPath"><property name="placeholderText"><string>Select OSM or Shapefile...</string></property></widget></item>
+        <item><widget class="QPushButton" name="btnBrowseVector"><property name="text"><string>Browse</string></property></widget></item>
+       </layout>
+      </item>
+      <item row="1" column="0"><widget class="QLabel"><property name="text"><string>Feature Type:</string></property></widget></item>
+      <item row="1" column="1">
+       <widget class="QComboBox" name="cmbFeatureType">
+        <item><property name="text"><string>Road Network (Lines)</string></property></item>
+        <item><property name="text"><string>Building Footprints (Polygons)</string></property></item>
+        <item><property name="text"><string>Administrative Boundaries</string></property></item>
+        <item><property name="text"><string>POIs / Critical Infrastructure (Points)</string></property></item>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="grpStyling">
+     <property name="title"><string>2. Rendering &amp; Style Options</string></property>
+     <layout class="QFormLayout">
+      <item row="0" column="0"><widget class="QLabel"><property name="text"><string>Line / Border Color:</string></property></widget></item>
+      <item row="0" column="1">
+       <widget class="QComboBox" name="cmbColor">
+        <item><property name="text"><string>Red (Hazard Overlay)</string></property></item>
+        <item><property name="text"><string>Blue (Hydrology/Water)</string></property></item>
+        <item><property name="text"><string>Green (Safe Area/Parks)</string></property></item>
+        <item><property name="text"><string>Black (Road Network)</string></property></item>
+       </widget>
+      </item>
+      <item row="1" column="0"><widget class="QLabel"><property name="text"><string>Opacity (%):</string></property></widget></item>
+      <item row="1" column="1"><widget class="QSpinBox" name="spnOpacity"><property name="maximum"><number>100</number></property><property name="value"><number>80</number></property></widget></item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="btnLayout">
+     <item><widget class="QPushButton" name="btnLoadMap"><property name="text"><string>Render Layer on Main Canvas</string></property></widget></item>
+     <item><widget class="QPushButton" name="btnClearMap"><property name="text"><string>Clear Canvas</string></property></widget></item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+</ui>

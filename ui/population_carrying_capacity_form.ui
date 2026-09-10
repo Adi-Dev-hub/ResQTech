@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>PopCarryingCapacityForm</class>
+ <widget class="QWidget" name="PopCarryingCapacityForm">
+  <property name="geometry"><rect><x>0</x><y>0</y><width>380</width><height>750</height></rect></property>
+  <layout class="QVBoxLayout" name="mainLayout">
+   <property name="spacing"><number>8</number></property>
+   <property name="leftMargin"><number>10</number></property>
+   <property name="topMargin"><number>10</number></property>
+   <property name="rightMargin"><number>10</number></property>
+   <property name="bottomMargin"><number>10</number></property>
+   <item>
+    <widget class="QLabel" name="lblTitle">
+     <property name="text"><string>POPULATION EXPOSURE &amp; CARRYING CAPACITY</string></property>
+     <property name="styleSheet"><string>font-size: 11px; font-weight: bold; color: #0F172A;</string></property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="grpPopInputs">
+     <property name="title"><string>1. Population &amp; Demographics Data</string></property>
+     <layout class="QFormLayout">
+      <item row="0" column="0"><widget class="QLabel"><property name="text"><string>Population Grid (.tif):</string></property></widget></item>
+      <item row="0" column="1">
+       <layout class="QHBoxLayout">
+        <item><widget class="QLineEdit" name="txtPopRaster"><property name="placeholderText"><string>WorldPop / LandScan grid...</string></property></widget></item>
+        <item><widget class="QPushButton" name="btnBrowsePop"><property name="text"><string>Browse</string></property></widget></item>
+       </layout>
+      </item>
+      <item row="1" column="0"><widget class="QLabel"><property name="text"><string>Ward Vector (.shp):</string></property></widget></item>
+      <item row="1" column="1">
+       <layout class="QHBoxLayout">
+        <item><widget class="QLineEdit" name="txtWardVector"><property name="placeholderText"><string>Census boundaries...</string></property></widget></item>
+        <item><widget class="QPushButton" name="btnBrowseWard"><property name="text"><string>Browse</string></property></widget></item>
+       </layout>
+      </item>
+      <item row="2" column="0"><widget class="QLabel"><property name="text"><string>Vulnerable Age (%):</string></property></widget></item>
+      <item row="2" column="1"><widget class="QDoubleSpinBox" name="spnVulnerable"><property name="maximum"><double>100.0</double></property><property name="value"><double>25.0</double></property></widget></item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="grpShelterInputs">
+     <property name="title"><string>2. Safe Zone &amp; Shelter Data</string></property>
+     <layout class="QFormLayout">
+      <item row="0" column="0"><widget class="QLabel"><property name="text"><string>Zone Type:</string></property></widget></item>
+      <item row="0" column="1">
+       <widget class="QComboBox" name="cmbZoneType">
+        <item><property name="text"><string>Permanent Relief Shelters</string></property></item>
+        <item><property name="text"><string>Temporary Open Grounds / Camps</string></property></item>
+        <item><property name="text"><string>Hybrid / Multi-stage Safe Zones</string></property></item>
+       </widget>
+      </item>
+      <item row="1" column="0"><widget class="QLabel"><property name="text"><string>Safe Zone Vector (.shp):</string></property></widget></item>
+      <item row="1" column="1">
+       <layout class="QHBoxLayout">
+        <item><widget class="QLineEdit" name="txtSafeZones"><property name="placeholderText"><string>Shelter or camp polygon layer...</string></property></widget></item>
+        <item><widget class="QPushButton" name="btnBrowseSafeZones"><property name="text"><string>Browse</string></property></widget></item>
+       </layout>
+      </item>
+      <item row="2" column="0"><widget class="QLabel"><property name="text"><string>Hazard Mask Layer:</string></property></widget></item>
+      <item row="2" column="1">
+       <layout class="QHBoxLayout">
+        <item><widget class="QLineEdit" name="txtHazardMask"><property name="placeholderText"><string>Disaster flood/landslide extent...</string></property></widget></item>
+        <item><widget class="QPushButton" name="btnBrowseHazard"><property name="text"><string>Browse</string></property></widget></item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="grpCapacityParams">
+     <property name="title"><string>3. Capacity &amp; Resource Standards</string></property>
+     <layout class="QFormLayout">
+      <item row="0" column="0"><widget class="QLabel"><property name="text"><string>Min Space (m²/person):</string></property></widget></item>
+      <item row="0" column="1"><widget class="QDoubleSpinBox" name="spnSpacePerPerson"><property name="minimum"><double>1.0</double></property><property name="maximum"><double>50.0</double></property><property name="value"><double>3.5</double></property></widget></item>
+      <item row="1" column="0"><widget class="QLabel"><property name="text"><string>Water Supply (L/person/day):</string></property></widget></item>
+      <item row="1" column="1"><widget class="QDoubleSpinBox" name="spnWater"><property name="maximum"><double>200.0</double></property><property name="value"><double>15.0</double></property></widget></item>
+      <item row="2" column="0"><widget class="QLabel"><property name="text"><string>Sanitation Ratio (People/Toilet):</string></property></widget></item>
+      <item row="2" column="1"><widget class="QSpinBox" name="spnToiletRatio"><property name="maximum"><number>500</number></property><property name="value"><number>20</number></property></widget></item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="btnLayout">
+     <item><widget class="QPushButton" name="btnRun"><property name="text"><string>Run Exposure &amp; Capacity Analysis</string></property></widget></item>
+     <item><widget class="QPushButton" name="btnReset"><property name="text"><string>Reset Form</string></property></widget></item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+</ui>

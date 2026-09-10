@@ -1,13 +1,19 @@
 import os
 import sys
+import geopandas as gpd
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from PySide6.QtCore import QDir, QFile, QIODevice, Qt
 from PySide6.QtGui import QAction, QFont
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtWidgets import (
     QApplication,
+    QCheckBox,
+    QFileDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMainWindow,
     QPushButton,
     QScrollArea,
@@ -175,37 +181,163 @@ QPushButton:hover {
 }
 
 #MapCanvasArea {
-    background-color: #E2E8F0;
+    background-color: #FFFFFF;
     border: 1px solid #CBD5E1;
     border-radius: 4px;
+}
+
+#LayerControlPanel {
+    background-color: #FFFFFF;
+    border-top: 1px solid #CBD5E1;
+    padding: 6px;
 }
 """
 
 
 # ==============================================================================
-# QGIS MAP CANVAS PLACEHOLDER
+# QGIS-STYLE MULTI-LAYER MAP CANVAS WITH MATPLOTLIB & GEOPANDAS
 # ==============================================================================
 class GISMapCanvasWidget(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("MapCanvasArea")
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        # Layer Management Storage
+        self.layers = {}  # {layer_id: {"gdf": GeoDataFrame, "visible": bool, "style": dict, "name": str}}
 
-        self.info_label = QLabel(
-            "QGIS MAP CANVAS\n(Central Spatial Visualization Area)"
-        )
-        self.info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.info_label.setStyleSheet(
-            "color: #64748B; font-size: 14px; font-weight: bold;"
-        )
-        layout.addWidget(self.info_label)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(5, 5, 5, 5)
+
+        # Embedded Matplotlib Figure
+        self.fig, self.ax = plt.subplots(figsize=(8, 6))
+        self.canvas = FigureCanvas(self.fig)
+        layout.addWidget(self.canvas)
+
+        # Layer Control Box (QGIS Layers Panel)
+        self.layer_panel = QFrame()
+        self.layer_panel.setObjectName("LayerControlPanel")
+        self.layer_layout = QHBoxLayout(self.layer_panel)
+        self.layer_layout.setContentsMargins(5, 2, 5, 2)
+        
+        lbl_layers = QLabel("QGIS Layers:")
+        lbl_layers.setStyleSheet("font-weight: bold; color: #0F172A;")
+        self.layer_layout.addWidget(lbl_layers)
+        self.layer_layout.addStretch()
+
+        layout.addWidget(self.layer_panel)
+
+        self.ax.set_title("ResQTech Spatial Visualization Area", fontsize=11)
+        self.ax.set_axis_off()
 
     def update_canvas_layer(self, layer_name: str):
-        self.info_label.setText(
-            f"Active QGIS Map Layer: {layer_name}\n[Raster & Vector Overlays Rendered]"
-        )
+        if not self.layers:
+            self.ax.clear()
+            self.ax.text(
+                0.5,
+                0.5,
+                f"Active Layer: {layer_name}\n(Select & Load GeoJSON to Plot Data)",
+                horizontalalignment="center",
+                verticalalignment="center",
+                fontsize=12,
+                color="#64748B",
+                transform=self.ax.transAxes,
+            )
+            self.ax.set_axis_off()
+            self.canvas.draw()
+
+    def add_or_update_layer(self, file_path: str):
+        """Adds a layer to the layer registry and renders all active layers together."""
+        try:
+            gdf = gpd.read_file(file_path)
+            file_title = os.path.basename(file_path)
+            file_lower = file_title.lower()
+
+            # Determine symbology type
+            if "hospital" in file_lower:
+                layer_id = "hospitals"
+                display_name = "Hospitals (+)"
+                style = {"color": "#E63946", "marker": "P", "size": 90}
+            elif "police" in file_lower:
+                layer_id = "police"
+                display_name = "Police Stations (*)"
+                style = {"color": "#1D3557", "marker": "*", "size": 90}
+            else:
+                layer_id = file_lower
+                display_name = file_title
+                style = {"color": "#2563EB", "marker": "o", "size": 50}
+
+            # Register/Update Layer Data
+            self.layers[layer_id] = {
+                "gdf": gdf,
+                "visible": True,
+                "style": style,
+                "name": display_name,
+            }
+
+            self._rebuild_layer_ui()
+            self.redraw_all_layers()
+
+            print(f"SUCCESS: Added/Updated layer '{display_name}' in QGIS engine!")
+        except Exception as e:
+            print(f"Error loading layer: {e}")
+
+    def toggle_layer_visibility(self, layer_id: str, is_visible: bool):
+        """Toggles a specific layer On/Off and redraws the canvas."""
+        if layer_id in self.layers:
+            self.layers[layer_id]["visible"] = is_visible
+            self.redraw_all_layers()
+
+    def _rebuild_layer_ui(self):
+        """Rebuilds the bottom QGIS-style layer toggle checkboxes."""
+        # Clear existing toggles
+        for i in reversed(range(self.layer_layout.count())):
+            item = self.layer_layout.itemAt(i)
+            widget = item.widget()
+            if widget and isinstance(widget, QCheckBox):
+                widget.setParent(None)
+
+        # Add checkboxes for registered layers
+        for layer_id, layer_info in self.layers.items():
+            chk = QCheckBox(layer_info["name"])
+            chk.setChecked(layer_info["visible"])
+            chk.setStyleSheet("font-weight: 600; margin-right: 10px;")
+            chk.toggled.connect(
+                lambda checked, lid=layer_id: self.toggle_layer_visibility(lid, checked)
+            )
+            self.layer_layout.addWidget(chk)
+
+    def redraw_all_layers(self):
+        """Clears canvas and renders all visible layers simultaneously."""
+        self.ax.clear()
+        visible_count = 0
+
+        for layer_id, layer_info in self.layers.items():
+            if layer_info["visible"]:
+                visible_count += 1
+                gdf = layer_info["gdf"]
+                style = layer_info["style"]
+                gdf.plot(
+                    ax=self.ax,
+                    color=style["color"],
+                    edgecolor="#0F172A",
+                    marker=style["marker"],
+                    markersize=style["size"],
+                    alpha=0.85,
+                    label=layer_info["name"],
+                )
+
+        if visible_count > 0:
+            self.ax.set_title(
+                f"Multi-Layer View ({visible_count} active layer(s))",
+                fontsize=11,
+                fontweight="bold",
+            )
+            self.ax.legend(loc="upper right", frameon=True)
+        else:
+            self.ax.set_title("All layers turned off", fontsize=11)
+
+        self.ax.set_axis_off()
+        self.canvas.draw()
 
 
 # ==============================================================================
@@ -223,6 +355,7 @@ class MainWindow(QMainWindow):
         self._create_tool_bar()
         self._create_status_bar()
         self._build_main_layout()
+        self._connect_osm_form_signals()
 
     def _create_menu_bar(self):
         menubar = self.menuBar()
@@ -242,14 +375,14 @@ class MainWindow(QMainWindow):
         hazard_menu.addAction("Cloudburst", lambda: self.switch_page(4))
         hazard_menu.addAction("Forest Fire", lambda: self.switch_page(5))
         hazard_menu.addSeparator()
-        hazard_menu.addAction(
-            "Multi-Hazard Analysis", lambda: self.switch_page(6)
-        )
+        hazard_menu.addAction("Multi-Hazard Analysis", lambda: self.switch_page(6))
 
-        reloc_menu = menubar.addMenu("Relocation")
-        reloc_menu.addAction(
-            "Relocation Assessment", lambda: self.switch_page(7)
-        )
+        reloc_menu = menubar.addMenu("Relocation & Safety")
+        reloc_menu.addAction("Relocation Assessment", lambda: self.switch_page(7))
+        reloc_menu.addAction("Population Exposure", lambda: self.switch_page(8))
+        reloc_menu.addAction("Carrying Capacity", lambda: self.switch_page(9))
+        reloc_menu.addAction("Red Zone Delineation", lambda: self.switch_page(10))
+        reloc_menu.addAction("OSM / Infrastructure", lambda: self.switch_page(11))
 
     def _create_tool_bar(self):
         toolbar = QToolBar("GIS Quick Tools")
@@ -272,9 +405,7 @@ class MainWindow(QMainWindow):
     def _create_status_bar(self):
         self.statusbar = QStatusBar()
         self.setStatusBar(self.statusbar)
-        self.statusbar.showMessage(
-            "Status: Ready | Active CRS: EPSG:4326 - WGS 84"
-        )
+        self.statusbar.showMessage("Status: Ready | Active CRS: EPSG:4326 - WGS 84")
 
     def load_ui_file(self, file_name: str) -> QWidget:
         """Loads a .ui file directly from the ui/ folder."""
@@ -306,16 +437,12 @@ class MainWindow(QMainWindow):
         banner = QWidget()
         banner.setObjectName("HeaderBanner")
         banner.setMaximumHeight(32)
-        banner.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
-        )
+        banner.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
         banner_layout = QHBoxLayout(banner)
         banner_layout.setContentsMargins(12, 0, 12, 0)
 
-        t1 = QLabel(
-            "DRRDSS — Disaster Risk & Relocation Decision Support System"
-        )
+        t1 = QLabel("DRRDSS — Disaster Risk & Relocation Decision Support System")
         t1.setObjectName("HeaderTitle")
         t2 = QLabel("NDRF | MHA")
         t2.setObjectName("HeaderSubtitle")
@@ -335,7 +462,7 @@ class MainWindow(QMainWindow):
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(2)
 
-        nav_lbl = QLabel("DISASTER TYPES")
+        nav_lbl = QLabel("DISASTER & CAPACITY MODULES")
         nav_lbl.setObjectName("NavHeader")
         left_layout.addWidget(nav_lbl)
 
@@ -349,6 +476,10 @@ class MainWindow(QMainWindow):
             ("Forest Fire", 5),
             ("Multi-Hazard Analysis", 6),
             ("Relocation Assessment", 7),
+            ("Population Exposure", 8),
+            ("Carrying Capacity", 9),
+            ("Red Zone Delineation", 10),
+            ("OSM Vector Infrastructure", 11),
         ]
 
         for name, idx in disasters:
@@ -384,14 +515,18 @@ class MainWindow(QMainWindow):
 
         # Stacked Widget Loading .ui Files
         self.stacked_widget = QStackedWidget()
-        self.stacked_widget.addWidget(self.load_ui_file("flood_form.ui"))
-        self.stacked_widget.addWidget(self.load_ui_file("landslide_form.ui"))
-        self.stacked_widget.addWidget(self.load_ui_file("cyclone_form.ui"))
-        self.stacked_widget.addWidget(self.load_ui_file("tsunami_form.ui"))
-        self.stacked_widget.addWidget(self.load_ui_file("cloudburst_form.ui"))
-        self.stacked_widget.addWidget(self.load_ui_file("forest_fire_form.ui"))
-        self.stacked_widget.addWidget(self.load_ui_file("multi_hazard_form.ui"))
-        self.stacked_widget.addWidget(self.load_ui_file("relocation_form.ui"))
+        self.stacked_widget.addWidget(self.load_ui_file("flood_form.ui"))  # Index 0
+        self.stacked_widget.addWidget(self.load_ui_file("landslide_form.ui"))  # Index 1
+        self.stacked_widget.addWidget(self.load_ui_file("cyclone_form.ui"))  # Index 2
+        self.stacked_widget.addWidget(self.load_ui_file("tsunami_form.ui"))  # Index 3
+        self.stacked_widget.addWidget(self.load_ui_file("cloudburst_form.ui"))  # Index 4
+        self.stacked_widget.addWidget(self.load_ui_file("forest_fire_form.ui"))  # Index 5
+        self.stacked_widget.addWidget(self.load_ui_file("multi_hazard_form.ui"))  # Index 6
+        self.stacked_widget.addWidget(self.load_ui_file("relocation_form.ui"))  # Index 7
+        self.stacked_widget.addWidget(self.load_ui_file("population_form.ui"))  # Index 8
+        self.stacked_widget.addWidget(self.load_ui_file("population_carrying_capacity_form.ui"))  # Index 9
+        self.stacked_widget.addWidget(self.load_ui_file("red_zone_form.ui"))  # Index 10
+        self.stacked_widget.addWidget(self.load_ui_file("osm_loader_form.ui"))  # Index 11
 
         # Scroll Wrapper
         right_scroll = QScrollArea()
@@ -403,10 +538,53 @@ class MainWindow(QMainWindow):
         right_layout.addWidget(right_scroll)
         splitter.addWidget(right_container)
 
-        splitter.setSizes([200, 780, 420])
+        splitter.setSizes([220, 760, 420])
         root_layout.addWidget(splitter, 1)
 
         self.switch_page(0)
+
+    def _connect_osm_form_signals(self):
+        """Connects input UI elements in osm_loader_form.ui to output rendering on the canvas."""
+        osm_form_widget = self.stacked_widget.widget(11)
+        if not osm_form_widget:
+            return
+
+        btn_browse = osm_form_widget.findChild(
+            QPushButton, "btnBrowseVectorLayer"
+        ) or osm_form_widget.findChild(QPushButton, "btnBrowseVector")
+        btn_render = osm_form_widget.findChild(
+            QPushButton, "btnRenderVector"
+        ) or osm_form_widget.findChild(QPushButton, "btnLoadMap")
+        txt_path = osm_form_widget.findChild(
+            QLineEdit, "txtVectorPathInput"
+        ) or osm_form_widget.findChild(QLineEdit, "txtVectorPath")
+
+        if btn_browse:
+
+            def browse_vector_file():
+                file_path, _ = QFileDialog.getOpenFileName(
+                    self,
+                    "Select GeoJSON Dataset",
+                    os.path.dirname(__file__),
+                    "Vector Files (*.geojson *.json *.shp *.gpkg)",
+                )
+                if file_path and txt_path:
+                    txt_path.setText(file_path)
+
+            btn_browse.clicked.connect(browse_vector_file)
+
+        if btn_render:
+
+            def render_vector_layer():
+                if txt_path and txt_path.text():
+                    path = txt_path.text()
+                    self.map_canvas.add_or_update_layer(path)
+                else:
+                    self.statusbar.showMessage(
+                        "Please select a GeoJSON file first using Browse!"
+                    )
+
+            btn_render.clicked.connect(render_vector_layer)
 
     def switch_page(self, index: int):
         self.stacked_widget.setCurrentIndex(index)
@@ -422,11 +600,15 @@ class MainWindow(QMainWindow):
             "Forest Fire",
             "Multi-Hazard",
             "Relocation",
+            "Population Exposure",
+            "Carrying Capacity",
+            "Red Zone Delineation",
+            "OSM Vector Infrastructure",
         ]
         active_name = disaster_names[index]
         self.map_canvas.update_canvas_layer(active_name)
         self.statusbar.showMessage(
-            f"Status: Active Module -> {active_name} Hazard Analysis"
+            f"Status: Active Module -> {active_name} Analysis"
         )
 
 
